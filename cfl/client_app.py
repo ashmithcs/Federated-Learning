@@ -1,83 +1,104 @@
-"""CFL: A Flower / TensorFlow app."""
+"""CFL: A Flower / TensorFlow app with Differential Privacy (DP)."""
 
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasSGDOptimizer
 
 from cfl.model import load_model
 from cfl.task import load_data
 
-# Flower ClientApp
+# Differential Privacy PARAMETERS
+EPSILON = 1.1
+DELTA = 1e-5
+L2_CLIP = 1.0
+NOISE_MULTIPLIER = 1.0 / EPSILON
+
+
 app = ClientApp()
 
 
 @app.train()
 def train(msg: Message, context: Context):
-    """Train the model on local data."""
 
-    # Load the model and initialize it with the received weights
+    # Load model + global weights
     model = load_model()
     ndarrays = msg.content["arrays"].to_numpy_ndarrays()
     model.set_weights(ndarrays)
 
-    # Read from config
+    # Read config
     epochs = context.run_config["local-epochs"]
     batch_size = context.run_config["batch-size"]
     verbose = context.run_config.get("verbose")
 
-    # Load the data
-    partition_id = context.node_config["partition-id"]
-    num_partitions = context.node_config["num-partitions"]
-    x_train, y_train, _, _ = load_data(partition_id, num_partitions)
+    # Load client dataset
+    cid = context.node_config["partition-id"]
+    num_parts = context.node_config["num-partitions"]
 
-    # Train the model on local data
+    x_train, y_train, _, _ = load_data(cid, num_parts)
+
+    # Differential Privacy Optimizer
+    dp_optimizer = DPKerasSGDOptimizer(
+        learning_rate=0.02,
+        noise_multiplier=NOISE_MULTIPLIER,
+        l2_norm_clip=L2_CLIP,
+        num_microbatches=1,
+    )
+
+    model.compile(
+        optimizer=dp_optimizer,
+        loss="binary_crossentropy",
+        metrics=["accuracy"],
+    )
+
     history = model.fit(
         x_train,
         y_train,
-        epochs=epochs,
         batch_size=batch_size,
+        epochs=epochs,
         verbose=verbose,
     )
+    partition_id = int(context.node_id)
+    print(f"[Client {partition_id}] Samples = {len(x_train)}")
 
-    # Get final training loss and accuracy
-    train_loss = history.history["loss"][-1] if "loss" in history.history else None
-    train_acc = history.history.get("accuracy")
-    train_acc = train_acc[-1] if train_acc is not None else None
+    train_loss = history.history["loss"][-1]
+    train_acc = history.history["accuracy"][-1]
 
-    # Construct and return reply Message
-    model_record = ArrayRecord(model.get_weights())
-    metrics = {"num-examples": len(x_train)}
-    if train_loss is not None:
-        metrics["train_loss"] = train_loss
-    if train_acc is not None:
-        metrics["train_acc"] = train_acc
-    metric_record = MetricRecord(metrics)
-    content = RecordDict({"arrays": model_record, "metrics": metric_record})
-    return Message(content=content, reply_to=msg)
+    return Message(
+        content=RecordDict({
+            "arrays": ArrayRecord(model.get_weights()),
+            "metrics": MetricRecord({
+                "num-examples": len(x_train),
+                "train_loss": train_loss,
+                "train_acc": train_acc,
+                "epsilon": EPSILON,
+                "delta": DELTA,
+            }),
+        }),
+        reply_to=msg
+    )
 
 
 @app.evaluate()
 def evaluate(msg: Message, context: Context):
-    """Evaluate the model on local data."""
 
-    # Load the model and initialize it with the received weights
+    # Load model
     model = load_model()
-    ndarrays = msg.content["arrays"].to_numpy_ndarrays()
-    model.set_weights(ndarrays)
+    arr = msg.content["arrays"].to_numpy_ndarrays()
+    model.set_weights(arr)
 
-    # Load the data
-    partition_id = context.node_config["partition-id"]
-    num_partitions = context.node_config["num-partitions"]
-    _, _, x_test, y_test = load_data(partition_id, num_partitions)
+    cid = context.node_config["partition-id"]
+    num_parts = context.node_config["num-partitions"]
+    _, _, x_test, y_test = load_data(cid, num_parts)
 
-    # Evaluate the model on local data
-    loss, accuracy = model.evaluate(x_test, y_test, verbose=0)
+    loss, acc = model.evaluate(x_test, y_test, verbose=0)
 
-    # Construct and return reply Message
-    metrics = {
-        "eval_loss": loss,
-        "eval_acc": accuracy,
-        "num-examples": len(x_test),
-    }
-    metric_record = MetricRecord(metrics)
-    content = RecordDict({"metrics": metric_record})
-    return Message(content=content, reply_to=msg)
+    return Message(
+        content=RecordDict({
+            "metrics": MetricRecord({
+                "eval_loss": loss,
+                "eval_acc": acc,
+                "num-examples": len(x_test),
+            })
+        }),
+        reply_to=msg
+    )
