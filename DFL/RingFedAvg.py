@@ -4,15 +4,14 @@ TRUE Decentralized Federated Learning (DFL)
 
 ✓ No server
 ✓ Every client trains locally
-✓ Every client gossips with a random peer
-✓ Models gradually converge without a central aggregator
+✓ Neighbor-based FedAvg (Decentralized FedAvg)
+✓ Models converge via local consensus
 ✓ DP-SGD supported
 """
 
 import random
 import numpy as np
 from copy import deepcopy
-
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasSGDOptimizer
 
 from model import load_model
@@ -24,21 +23,54 @@ NUM_ROUNDS = 10
 LOCAL_EPOCHS = 2
 BATCH_SIZE = 32
 
-ALPHA = 0.5   # Gossip mixing factor (0.5 = simple averaging)
-
 # Differential Privacy
 EPSILON = 1.1
 DELTA = 1e-5
 L2_CLIP = 1.0
 NOISE_MULTIPLIER = 1.0 / EPSILON
 
-# Client Node
+
+# BUILD RING TOPOLOGY (Each client has 2 neighbors)
+def build_ring_topology(num_clients):
+    topology = {}
+    for i in range(num_clients):
+        topology[i] = [(i - 1) % num_clients, (i + 1) % num_clients]
+    return topology
+
+# DECENTRALIZED FEDAVG
+def decentralized_fedavg(clients, topology):
+    """Perform neighbor-based FedAvg (no server)."""
+    new_weights = []
+
+    # Collect all client model weights
+    all_weights = [c.get_weights() for c in clients]
+
+    for cid, c in enumerate(clients):
+        # Neighbor set including self
+        neighbors = topology[cid] + [cid]
+
+        # Collect corresponding neighbor models
+        neighbor_models = [all_weights[n] for n in neighbors]
+
+        # Layer-wise average
+        avg_weights = []
+        for layer_tensors in zip(*neighbor_models):
+            avg_layer = np.mean(layer_tensors, axis=0)
+            avg_weights.append(avg_layer)
+
+        new_weights.append(avg_weights)
+
+    # Update each client's weights
+    for cid, c in enumerate(clients):
+        c.set_weights(new_weights[cid])
+
+
+# CLIENT CLASS
 class ClientNode:
     def __init__(self, cid, num_clients):
         self.cid = cid
         self.model = load_model()
 
-        # Load private data
         x_train, y_train, x_test, y_test = load_data(cid, num_clients)
         self.x_train = x_train
         self.y_train = y_train
@@ -76,61 +108,56 @@ class ClientNode:
     def set_weights(self, weights):
         self.model.set_weights(deepcopy(weights))
 
-    def gossip_with(self, peer_model):
-        """Perform decentralized gossip averaging"""
-        my_weights = self.get_weights()
-        new_weights = []
-
-        for w_self, w_peer in zip(my_weights, peer_model):
-            new_w = ALPHA * w_self + (1 - ALPHA) * w_peer
-            new_weights.append(new_w)
-
-        self.set_weights(new_weights)
-
     def evaluate(self):
         loss, acc = self.model.evaluate(self.x_test, self.y_test, verbose=0)
         return loss, acc
 
-# Decentralized FL Process
+# MAIN DECENTRALIZED FEDAVG PROCESS
 def main():
 
-    # Initialize nodes
+    # Initialize topology
+    topology = build_ring_topology(NUM_CLIENTS)
+
+    print("\nRing topology neighbors:")
+    for cid in topology:
+     print(f"Client {cid} neighbors → {topology[cid]}")
+
+    # Initialize clients
     clients = [ClientNode(i, NUM_CLIENTS) for i in range(NUM_CLIENTS)]
 
-    # Start with identical initialization
+    # Start from identical initialization
     initial_weights = clients[0].get_weights()
     for c in clients:
         c.set_weights(initial_weights)
 
     for rnd in range(NUM_ROUNDS):
-        print(f"\n===== ROUND {rnd + 1}/{NUM_ROUNDS} =====")
+        print(f"\n ROUND {rnd + 1}/{NUM_ROUNDS} ")
 
-        # 1) Local training for ALL clients
+        # Step 1: Local Training
         for c in clients:
             loss, acc = c.local_train()
             print(f"Client {c.cid} → loss={loss:.4f}  acc={acc:.4f}")
 
-        # 2) Peer-to-peer model gossip (no server)
-        for c in clients:
-            peer = random.choice(clients)
-            if peer.cid != c.cid:
-                c.gossip_with(peer.get_weights())
-                print(f"Client {c.cid} gossiped with Client {peer.cid}")
+        # Step 2: Decentralized FedAvg
+        decentralized_fedavg(clients, topology)
+        print("Performed decentralized FedAvg among neighbors")
 
-        # 3) Evaluate global consensus
-        total_loss, total_acc, total_samples = 0, 0, 0
+        # Step 3: Evaluate global consensus
+        total_loss, total_acc = 0, 0
         for c in clients:
             loss, acc = c.evaluate()
             total_loss += loss
             total_acc += acc
-            total_samples += 1
 
-        print(f"Global Consensus Loss: {total_loss / total_samples:.4f}")
-        print(f"Global Consensus Acc : {total_acc / total_samples:.4f}")
+        avg_loss = total_loss / NUM_CLIENTS
+        avg_acc = total_acc / NUM_CLIENTS
+
+        print(f"Global Consensus Loss: {avg_loss:.4f}")
+        print(f"Global Consensus Acc : {avg_acc:.4f}")
 
     print("\nTraining completed — saving model")
-    clients[0].model.save("gossip_decentralized_model.keras")
+    clients[0].model.save("ring_decentralized_model.keras")
 
-
+# RUN
 if __name__ == "__main__":
     main()
