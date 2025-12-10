@@ -20,8 +20,10 @@ app = ClientApp()
 @app.train()
 def train(msg: Message, context: Context):
 
-    # Load model + global weights
+    # Load model 
     model = load_model()
+    
+    # global weights
     ndarrays = msg.content["arrays"].to_numpy_ndarrays()
     model.set_weights(ndarrays)
 
