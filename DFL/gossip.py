@@ -103,7 +103,7 @@ def main():
         c.set_weights(initial_weights)
 
     for rnd in range(NUM_ROUNDS):
-        print(f"\n===== ROUND {rnd + 1}/{NUM_ROUNDS} =====")
+        print(f"\n ROUND {rnd + 1}/{NUM_ROUNDS} ")
 
         # 1) Local training for ALL clients
         for c in clients:
