@@ -19,7 +19,7 @@ from task import load_data
 
 # Hyperparameters
 NUM_CLIENTS = 10
-NUM_ROUNDS = 10
+NUM_ROUNDS = 50
 LOCAL_EPOCHS = 2
 BATCH_SIZE = 32
 
