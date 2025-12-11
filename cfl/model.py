@@ -1,7 +1,7 @@
 from keras import layers
 import keras
 
-
+#fully connected feed-forward neural network(FNN)
 def load_model():
     model = keras.Sequential(
         [
