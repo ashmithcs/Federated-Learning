@@ -8,7 +8,7 @@ from cfl.model import load_model
 from cfl.task import load_data
 
 # Differential Privacy PARAMETERS
-EPSILON = 1.1
+EPSILON = 1.9
 DELTA = 1e-5
 L2_CLIP = 1.0
 NOISE_MULTIPLIER = 1.0 / EPSILON

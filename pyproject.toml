@@ -38,6 +38,10 @@ local-epochs = 5
 batch-size = 32
 verbose = false
 
+# Dataset selection
+dataset-type = "dirichlet"   # "iid" or "dirichlet"
+dirichlet-alpha = 0.05
+
 # Default federation to use when running the app
 [tool.flwr.federations]
 default = "local-simulation"
