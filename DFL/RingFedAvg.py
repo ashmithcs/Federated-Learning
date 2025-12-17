@@ -15,21 +15,50 @@ from copy import deepcopy
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasSGDOptimizer
 
 from model import load_model
-from task import load_data
+from task import load_data_iid, load_data_dirichlet
+import tensorflow as tf 
+import tomli
+#rb = read binary
+with open("pyproject.toml", "rb") as py:
+    config = tomli.load(py)
 
-# Hyperparameters
-NUM_CLIENTS = 10
-NUM_ROUNDS = 50
-LOCAL_EPOCHS = 2
-BATCH_SIZE = 32
+config = config["tool"]["flwr"]["app"]["config"]
+
+NUM_ROUNDS = config["num-server-rounds"]
+LOCAL_EPOCHS = config["local-epochs"]
+BATCH_SIZE = config["batch-size"]
+NUM_CLIENTS = config["num-clients"]
+
+# Dataset control
+DATASET_TYPE = config.get("dataset-type")      # "iid" or "dirichlet"
+DIRICHLET_ALPHA = config.get("dirichlet-alpha")
 
 # Differential Privacy
-EPSILON = 1.1
-DELTA = 1e-5
-L2_CLIP = 1.0
+EPSILON = config["epsilon"]
+DELTA = config["delta"]
+L2_CLIP = config["l2_clip"]
 NOISE_MULTIPLIER = 1.0 / EPSILON
 
+# FedProx
+MU = float(config.get("mu", 0.0))
 
+def load_selected_data(cid, num_clients):
+
+    if DATASET_TYPE == "iid":
+        return load_data_iid(cid, num_clients)
+
+    elif DATASET_TYPE == "dirichlet":
+        return load_data_dirichlet(
+            cid,
+            num_clients,
+            alpha=DIRICHLET_ALPHA
+        )
+
+    else:
+        raise ValueError(
+            f"Invalid dataset-type '{DATASET_TYPE}'. "
+            f"Use 'iid' or 'dirichlet'."
+        )
 # BUILD RING TOPOLOGY (Each client has 2 neighbors)
 def build_ring_topology(num_clients):
     topology = {}
@@ -71,13 +100,19 @@ class ClientNode:
         self.cid = cid
         self.model = load_model()
 
-        x_train, y_train, x_test, y_test = load_data(cid, num_clients)
+        x_train, y_train, x_test, y_test = load_selected_data(cid, num_clients)
         self.x_train = x_train
         self.y_train = y_train
         self.x_test = x_test
         self.y_test = y_test
-
+        self.ref_weights_tf = None
         self._compile_dp()
+
+    def set_ref_weights(self, ref_weights_np):
+        self.ref_weights_tf = [
+            tf.convert_to_tensor(w, dtype=tw.dtype)
+            for w, tw in zip(ref_weights_np, self.model.trainable_weights)
+        ]
 
     def _compile_dp(self):
         dp_optimizer = DPKerasSGDOptimizer(
@@ -86,13 +121,35 @@ class ClientNode:
             l2_norm_clip=L2_CLIP,
             num_microbatches=1
         )
+
+        bce = tf.keras.losses.BinaryCrossentropy(from_logits=False, reduction="none")
+
+        def fedprox_loss(y_true, y_pred):
+            base = bce(y_true, y_pred)  # shape (batch,)
+
+            if MU <= 0.0 or self.ref_weights_tf is None:
+                return base
+
+            prox = tf.add_n([
+                tf.reduce_sum(tf.square(w - w_ref))
+                for w, w_ref in zip(self.model.trainable_weights, self.ref_weights_tf)
+            ])
+
+            return base + (MU / 2.0) * prox
+
+
         self.model.compile(
             optimizer=dp_optimizer,
-            loss="binary_crossentropy",
+            loss=fedprox_loss,
             metrics=["accuracy"]
         )
 
     def local_train(self):
+        if len(self.x_train) == 0:
+         print(f"Client {self.cid} has no data — skipping training")
+         return 0.0, 0.0
+
+
         history = self.model.fit(
             self.x_train,
             self.y_train,
@@ -114,7 +171,15 @@ class ClientNode:
 
 # MAIN DECENTRALIZED FEDAVG PROCESS
 def main():
-
+    print(f"Clients        : {NUM_CLIENTS}")
+    print(f"Rounds         : {NUM_ROUNDS}")
+    print(f"Dataset type   : {DATASET_TYPE}")
+    print(f"Epsilon (DP)   : {EPSILON}")
+    print(f"DELTA (DP)   : {DELTA}")
+    print(f"L2_CLIP (DP)   : {L2_CLIP}")
+    print(f"NOISE_MULTIPLIER (DP)   : {NOISE_MULTIPLIER}")
+    if DATASET_TYPE == "dirichlet":
+        print(f"Dirichlet  : {DIRICHLET_ALPHA}")
     # Initialize topology
     topology = build_ring_topology(NUM_CLIENTS)
 
