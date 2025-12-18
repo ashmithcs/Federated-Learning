@@ -23,70 +23,82 @@ def _load_and_preprocess():
     df["diagnosis"] = df["diagnosis"].map({"B": 0, "M": 1})
 
     # Split features and labels
-    X = df.drop("diagnosis", axis=1).values
+    x = df.drop("diagnosis", axis=1).values
     y = df["diagnosis"].values
 
     # Normalize features
     scaler = StandardScaler()
-    X = scaler.fit_transform(X)
+    x = scaler.fit_transform(x)
 
     # Train / Test split (same test set for all clients)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
+    x_train, x_test, y_train, y_test = train_test_split(
+        x,
         y,
         test_size=0.2,
         random_state=42,
         stratify=y,
     )
 
-    return X_train, y_train, X_test, y_test
+    return x_train, y_train, x_test, y_test
 
 # IID PARTITIONING (SAME AS YOUR CURRENT CODE)
 def load_data_iid(partition_id: int, num_partitions: int):
-    X_train, y_train, X_test, y_test = _load_and_preprocess()
+    x_train, y_train, x_test, y_test = _load_and_preprocess()
 
-    total = len(X_train)
+    total = len(x_train)
     size = total // num_partitions
 
     start = partition_id * size
     end = start + size
 
-    X_train_p = X_train[start:end]
+    x_train_p = x_train[start:end]
     y_train_p = y_train[start:end]
 
-    return X_train_p, y_train_p, X_test, y_test
+    return x_train_p, y_train_p, x_test, y_test
 
 # NON-IID PARTITIONING (DIRICHLET)
 def load_data_dirichlet(
     partition_id: int,
     num_partitions: int,
     alpha: float = 0.5,
+    min_samples: int = 1,
 ):
-    X_train, y_train, X_test, y_test = _load_and_preprocess()
+    x_train, y_train, x_test, y_test = _load_and_preprocess()
+
+    rng = np.random.default_rng(42)
 
     num_classes = len(np.unique(y_train))
-    class_indices = [np.where(y_train == c)[0] for c in range(num_classes)]
+    class_indices = [
+        np.where(y_train == c)[0].tolist()
+        for c in range(num_classes)
+    ]
 
     client_indices = [[] for _ in range(num_partitions)]
 
     for c in range(num_classes):
         idx = class_indices[c]
-        np.random.shuffle(idx)
+        rng.shuffle(idx)
 
-        proportions = np.random.dirichlet(
-            alpha * np.ones(num_partitions)
-        )
+        proportions = rng.dirichlet(alpha * np.ones(num_partitions))
         proportions = (np.cumsum(proportions) * len(idx)).astype(int)
 
         splits = np.split(idx, proportions[:-1])
         for i, split in enumerate(splits):
             client_indices[i].extend(split)
 
+    for i in range(num_partitions):
+        if len(client_indices[i]) < min_samples:
+            donor = np.argmax([len(ci) for ci in client_indices])
+            needed = min_samples - len(client_indices[i])
+            transfer = client_indices[donor][:needed]
+            client_indices[i].extend(transfer)
+            del client_indices[donor][:needed]
+
     client_idx = client_indices[partition_id]
 
     return (
-        X_train[client_idx],
+        x_train[client_idx],
         y_train[client_idx],
-        X_test,
+        x_test,
         y_test,
     )

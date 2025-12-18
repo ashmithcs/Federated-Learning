@@ -54,7 +54,8 @@ def load_selected_data(cid, num_clients):
         return load_data_dirichlet(
             cid,
             num_clients,
-            alpha=DIRICHLET_ALPHA
+            alpha=DIRICHLET_ALPHA,
+            min_samples=1,
         )
 
     else:
@@ -62,6 +63,8 @@ def load_selected_data(cid, num_clients):
             f"Invalid dataset-type '{DATASET_TYPE}'. "
             f"Use 'iid' or 'dirichlet'."
         )
+
+
 
 # Client Node
 class ClientNode:
@@ -197,8 +200,8 @@ def main():
             total_loss += loss
             total_acc += acc
 
-        print(f"Global Consensus Loss: {total_loss / NUM_CLIENTS:.4f}")
-        print(f"Global Consensus Acc : {total_acc / NUM_CLIENTS:.4f}")
+        print(f"Global Loss: {total_loss / NUM_CLIENTS:.4f}")
+        print(f"Global Acc : {total_acc / NUM_CLIENTS:.4f}")
 
     print("\nTraining completed — saving model")
     clients[0].model.save("gossip_decentralized_model.keras")

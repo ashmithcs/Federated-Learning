@@ -51,7 +51,8 @@ def load_selected_data(cid, num_clients):
         return load_data_dirichlet(
             cid,
             num_clients,
-            alpha=DIRICHLET_ALPHA
+            alpha=DIRICHLET_ALPHA,
+            min_samples=1,
         )
 
     else:
@@ -217,8 +218,8 @@ def main():
         avg_loss = total_loss / NUM_CLIENTS
         avg_acc = total_acc / NUM_CLIENTS
 
-        print(f"Global Consensus Loss: {avg_loss:.4f}")
-        print(f"Global Consensus Acc : {avg_acc:.4f}")
+        print(f"Global Loss: {avg_loss:.4f}")
+        print(f"Global Acc : {avg_acc:.4f}")
 
     print("\nTraining completed — saving model")
     clients[0].model.save("ring_decentralized_model.keras")

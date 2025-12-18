@@ -41,15 +41,15 @@ alpha = 0.5
 
 # Dataset selection
 dataset-type = "dirichlet"   # "iid" or "dirichlet"
-dirichlet-alpha = 0.05
+dirichlet-alpha = 0.01
 
 # Differential Privacy
-epsilon = 1.1
+epsilon = 1.9
 delta = 1e-5
 l2_clip = 1.0
 
 # FedProx
-mu = 0.01
+mu = 0.00
 
 # Default federation to use when running the app
 [tool.flwr.federations]
