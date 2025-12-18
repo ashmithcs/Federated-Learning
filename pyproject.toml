@@ -33,14 +33,14 @@ clientapp = "cfl.client_app:app"
 
 # Custom config values accessible via `context.run_config`
 [tool.flwr.app.config]
-num-server-rounds = 50
+num-server-rounds = 10
 local-epochs = 5
 batch-size = 32
 verbose = false
 
 # Dataset selection
 dataset-type = "dirichlet"   # "iid" or "dirichlet"
-dirichlet-alpha = 0.05
+dirichlet-alpha = 0.01
 
 # Default federation to use when running the app
 [tool.flwr.federations]

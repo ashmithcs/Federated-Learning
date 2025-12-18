@@ -22,7 +22,7 @@ def main(grid: Grid, context: Context) -> None:
     arrays = ArrayRecord(model.get_weights())
 
     # Initialize FedAvg strategy
-    strategy = FedAvg(fraction_train=1.0, fraction_evaluate=1.0)
+    strategy = FedAvg(fraction_train=0.5, fraction_evaluate=0.5)
 
     # Start strategy, run FedAvg for `num_rounds`
     result = strategy.start(
