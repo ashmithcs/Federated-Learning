@@ -33,6 +33,9 @@ NUM_CLIENTS = config["num-clients"]
 DATASET_TYPE = config.get("dataset-type")      # "iid" or "dirichlet"
 DIRICHLET_ALPHA = config.get("dirichlet-alpha")
 
+#Clients per round 
+CLIENTS_PER_ROUND = 5
+
 # Differential Privacy
 EPSILON = config["epsilon"]
 DELTA = config["delta"]
@@ -199,8 +202,13 @@ def main():
     for rnd in range(NUM_ROUNDS):
         print(f"\n ROUND {rnd + 1}/{NUM_ROUNDS} ")
 
-        # Step 1: Local Training
-        for c in clients:
+        # 1) Random client selection
+        selected_clients = random.sample(clients, CLIENTS_PER_ROUND)
+
+        print("Selected clients:", [c.cid for c in selected_clients])
+
+        # Local training (only selected clients)
+        for c in selected_clients:
             loss, acc = c.local_train()
             print(f"Client {c.cid} → loss={loss:.4f}  acc={acc:.4f}")
 

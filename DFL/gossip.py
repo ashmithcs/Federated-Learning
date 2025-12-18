@@ -37,6 +37,13 @@ ALPHA = config["alpha"]  # Gossip mixing factor
 DATASET_TYPE = config.get("dataset-type")      # "iid" or "dirichlet"
 DIRICHLET_ALPHA = config.get("dirichlet-alpha")
 
+#Clients per round 
+CLIENTS_PER_ROUND = 5
+
+# Gossip intensity
+GOSSIP_STEPS = 10
+
+
 # Differential Privacy
 EPSILON = config["epsilon"]
 DELTA = config["delta"]
@@ -182,16 +189,24 @@ def main():
     for rnd in range(NUM_ROUNDS):
         print(f"\n ROUND {rnd + 1}/{NUM_ROUNDS} ")
 
-        # 1) Local training
-        for c in clients:
+        # 1) Random client selection
+        selected_clients = random.sample(clients, CLIENTS_PER_ROUND)
+
+        print("Selected clients:", [c.cid for c in selected_clients])
+
+        # Local training (only selected clients)
+        for c in selected_clients:
             loss, acc = c.local_train()
             print(f"Client {c.cid} → loss={loss:.4f}  acc={acc:.4f}")
 
+
         # 2) Peer-to-peer model gossip (no server)
-        for c in clients:
-            peer = random.choice([p for p in clients if p.cid != c.cid])
-            c.gossip_with(peer.get_weights())
-            print(f"Client {c.cid} gossiped with Client {peer.cid}")
+        for step in range(GOSSIP_STEPS):
+            print(f"Gossip Round {rnd + 1}.{step + 1}")
+            for c in selected_clients:
+             peer = random.choice([p for p in selected_clients if p.cid != c.cid])
+             c.gossip_with(peer.get_weights())
+             print(f"Client {c.cid} → Client {peer.cid}")
 
         # 3) Evaluate global consensus
         total_loss, total_acc = 0.0, 0.0

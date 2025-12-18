@@ -33,18 +33,18 @@ clientapp = "cfl.client_app:app"
 
 # Custom config values accessible via `context.run_config`
 [tool.flwr.app.config]
-num-server-rounds = 50
-local-epochs = 2
-batch-size = 32
+num-server-rounds = 10
+local-epochs = 8
+batch-size = 8
 num-clients = 10
 alpha = 0.5
 
 # Dataset selection
-dataset-type = "dirichlet"   # "iid" or "dirichlet"
-dirichlet-alpha = 0.01
+dataset-type = "iid"   # "iid" or "dirichlet"
+dirichlet-alpha = 0.05
 
 # Differential Privacy
-epsilon = 1.9
+epsilon = 5
 delta = 1e-5
 l2_clip = 1.0
 
